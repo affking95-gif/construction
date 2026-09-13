@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ConstructSpend — Construction Project Spend & Bill Manager</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --primary: #b45309;
+      --primary-dark: #92400e;
+      --accent: #f59e0b;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --border: #e2e8f0;
+      --shadow: 0 4px 20px rgba(0,0,0,0.06);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding-bottom: 80px;
+    }
+    .app { max-width: 480px; margin: 0 auto; position: relative; }
+    @media (min-width: 768px) {
+      .app { max-width: 1100px; display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; padding-bottom: 0; }
+      body { padding-bottom: 0; }
+    }
+
+    .sidebar {
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: none;
+    }
+    @media (min-width: 768px) { .sidebar { display: block; position: sticky; top: 0; height: 100vh; } }
+    .logo {
+      font-size: 1.25rem; font-weight: 700; color: var(--primary);
+      display: flex; align-items: center; gap: 8px; margin-bottom: 28px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; border-radius: 12px; cursor: pointer;
+      color: var(--muted); font-weight: 500; margin-bottom: 4px;
+      transition: all 0.2s;
+    }
+    .nav-item:hover, .nav-item.active { background: #fffbeb; color: var(--primary); }
+
+    .mobile-header {
+      background: var(--card); padding: 16px 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50;
+    }
+    @media (min-width: 768px) { .mobile-header { display: none; } }
+    .mobile-header .logo { margin: 0; font-size: 1.15rem; }
+
+    .content { padding: 16px; }
+    @media (min-width: 768px) { .content { padding: 28px 32px; } }
+
+    .card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 18px; box-shadow: var(--shadow); margin-bottom: 14px;
+    }
+    .card-title { font-size: 0.82rem; color: var(--muted); font-weight: 500; margin-bottom: 4px; }
+    .card-value { font-size: 1.5rem; font-weight: 700; }
+    .card-value.primary { color: var(--primary); }
+    .card-value.success { color: var(--success); }
+    .card-value.danger { color: var(--danger); }
+
+    .dashboard-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;
+    }
+    .dashboard-grid .full { grid-column: 1 / -1; }
+    .available-card {
+      background: linear-gradient(135deg, #b45309, #f59e0b);
+      color: white; text-align: center; padding: 26px 18px;
+    }
+    .available-card .card-title { color: rgba(255,255,255,0.9); }
+    .available-card .card-value { font-size: 2.1rem; color: white; }
+
+    .progress-bar {
+      height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin-top: 8px;
+    }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.4s; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 18px; border-radius: 12px; font-weight: 600; font-size: 0.95rem;
+      border: none; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-outline { background: white; border: 1.5px solid var(--border); color: var(--text); }
+    .btn-danger { background: #fef2f2; color: var(--danger); }
+    .btn-block { width: 100%; }
+    .quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+    @media (min-width: 480px) { .quick-actions { grid-template-columns: repeat(4, 1fr); } }
+
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 6px; color: var(--muted); }
+    input, select, textarea {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--border);
+      border-radius: 12px; font-size: 1rem; background: white;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100;
+      display: none; align-items: flex-end; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white; width: 100%; max-width: 480px; border-radius: 24px 24px 0 0;
+      padding: 22px; max-height: 90vh; overflow-y: auto;
+      animation: slideUp 0.3s ease;
+    }
+    @media (min-width: 768px) {
+      .modal-overlay { align-items: center; }
+      .modal { border-radius: 20px; max-height: 85vh; }
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .modal-title { font-size: 1.2rem; font-weight: 700; }
+    .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted); }
+
+    .tx-item {
+      display: flex; align-items: center; gap: 12px; padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tx-item:last-child { border-bottom: none; }
+    .tx-icon {
+      width: 42px; height: 42px; border-radius: 12px; display: flex;
+      align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0;
+    }
+    .tx-icon.budget { background: #d1fae5; color: var(--success); }
+    .tx-icon.expense { background: #fee2e2; color: var(--danger); }
+    .tx-icon.bill { background: #fef3c7; color: #b45309; }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tx-meta { font-size: 0.78rem; color: var(--muted); }
+    .tx-amount { font-weight: 700; white-space: nowrap; }
+    .tx-amount.budget { color: var(--success); }
+    .tx-amount.expense { color: var(--danger); }
+
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; background: white;
+      border-top: 1px solid var(--border); display: flex; justify-content: space-around;
+      padding: 8px 0 env(safe-area-inset-bottom); z-index: 40;
+    }
+    @media (min-width: 768px) { .bottom-nav { display: none; } }
+    .nav-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      background: none; border: none; color: var(--muted); font-size: 0.7rem;
+      padding: 6px 10px; cursor: pointer;
+    }
+    .nav-btn.active { color: var(--primary); }
+    .nav-btn .icon { font-size: 1.35rem; }
+    .nav-btn.add-btn {
+      background: var(--primary); color: white; border-radius: 50%;
+      width: 54px; height: 54px; margin-top: -18px; justify-content: center;
+      box-shadow: 0 4px 12px rgba(180,83,9,0.4);
+    }
+    .nav-btn.add-btn .icon { font-size: 1.7rem; }
+
+    .insight {
+      background: #fffbeb; border-left: 4px solid var(--primary);
+      padding: 11px 14px; border-radius: 0 12px 12px 0; margin-bottom: 8px;
+      font-size: 0.88rem;
+    }
+
+    .empty { text-align: center; padding: 36px 18px; color: var(--muted); }
+    .empty .icon { font-size: 2.8rem; margin-bottom: 10px; }
+
+    .project-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #fffbeb; color: var(--primary); padding: 6px 12px;
+      border-radius: 99px; font-size: 0.85rem; font-weight: 600;
+      margin-bottom: 12px; cursor: pointer; border: 1.5px solid #fde68a;
+    }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 99px;
+      font-size: 0.72rem; font-weight: 600;
+    }
+    .badge-warning { background: #fef3c7; color: #b45309; }
+    .badge-danger { background: #fee2e2; color: #b91c1c; }
+    .badge-ok { background: #d1fae5; color: #047857; }
+
+    .receipt-preview {
+      max-width: 100%; max-height: 180px; border-radius: 12px; margin-top: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .chart-container { position: relative; height: 210px; margin-top: 10px; }
+
+    .flex { display: flex; }
+    .justify-between { justify-content: space-between; }
+    .items-center { align-items: center; }
+    .gap-2 { gap: 8px; }
+    .mt-2 { margin-top: 8px; }
+    .mt-4 { margin-top: 14px; }
+    .mb-2 { margin-bottom: 8px; }
+    .text-sm { font-size: 0.85rem; }
+    .text-muted { color: var(--muted); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">🏗️ ConstructSpend</div>
+      <div class="nav-item active" data-page="dashboard">📊 Dashboard</div>
+      <div class="nav-item" data-page="projects">📁 Projects</div>
+      <div class="nav-item" data-page="expenses">🧾 Expenses & Bills</div>
+      <div class="nav-item" data-page="reports">📈 Reports</div>
+      <div class="nav-item" data-page="settings">⚙️ Settings</div>
+    </aside>
+
+    <main>
+      <header class="mobile-header">
+        <div class="logo">🏗️ ConstructSpend</div>
+        <button class="btn btn-outline" style="padding:8px 12px;font-size:0.85rem" onclick="openModal('add-expense')">+ Spend</button>
+      </header>
+
+      <div class="content" id="app-content"></div>
+    </main>
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-page="dashboard"><span class="icon">🏠</span>Home</button>
+    <button class="nav-btn" data-page="projects"><span class="icon">📁</span>Projects</button>
+    <button class="nav-btn add-btn" onclick="openQuickAdd()"><span class="icon">+</span></button>
+    <button class="nav-btn" data-page="expenses"><span class="icon">🧾</span>Bills</button>
+    <button class="nav-btn" data-page="reports"><span class="icon">📊</span>Reports</button>
+  </nav>
+
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal-content"></div>
+  </div>
+
+  <script>
+    // ==================== STATE ====================
+    const STORAGE_KEY = 'constructSpend_v1';
+    let state = {
+      projects: [],
+      expenses: [],
+      activeProjectId: null,
+      currency: '₹',
+      settings: {}
+    };
+
+    const CATEGORIES = [
+      'Materials', 'Cement & Concrete', 'Steel / Rebar', 'Labor / Wages',
+      'Equipment Rental', 'Transport / Logistics', 'Subcontractor',
+      'Electrical', 'Plumbing', 'Paint & Finishing', 'Scaffolding',
+      'Site Utilities', 'Tools', 'Miscellaneous', 'Other'
+    ];
+
+    const PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Credit', 'Other'];
+
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          state = { ...state, ...parsed };
+        }
+      } catch (e) { console.error(e); }
+      // Ensure at least one demo project if empty
+      if (state.projects.length === 0) {
+        const id = 'p_' + Date.now();
+        state.projects.push({
+          id,
+          name: 'Sample Residential Site',
+          budget: 2500000,
+          location: 'Bengaluru',
+          startDate: new Date().toISOString().slice(0,10),
+          notes: 'Demo project – edit or delete',
+          createdAt: new Date().toISOString()
+        });
+        state.activeProjectId = id;
+        saveState();
+      }
+      if (!state.activeProjectId && state.projects.length) {
+        state.activeProjectId = state.projects[0].id;
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    // ==================== HELPERS ====================
+    function formatMoney(n) {
+      return state.currency + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    }
+
+    function getActiveProject() {
+      return state.projects.find(p => p.id === state.activeProjectId) || state.projects[0] || null;
+    }
+
+    function getProjectTotals(projectId) {
+      const project = state.projects.find(p => p.id === projectId);
+      if (!project) return { budget: 0, spent: 0, remaining: 0, byCat: {} };
+      let spent = 0;
+      const byCat = {};
+      state.expenses.filter(e => e.projectId === projectId).forEach(e => {
+        spent += e.amount;
+        byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+      });
+      return {
+        budget: project.budget || 0,
+        spent,
+        remaining: (project.budget || 0) - spent,
+        byCat
+      };
+    }
+
+    function getAllTotals() {
+      let totalBudget = 0, totalSpent = 0;
+      state.projects.forEach(p => {
+        totalBudget += p.budget || 0;
+        totalSpent += getProjectTotals(p.id).spent;
+      });
+      return { totalBudget, totalSpent, totalRemaining: totalBudget - totalSpent };
+    }
+
+    // ==================== RENDER ====================
+    let currentPage = 'dashboard';
+
+    function navigate(page) {
+      currentPage = page;
+      document.querySelectorAll('.nav-item, .nav-btn').forEach(el => {
+        el.classList.toggle('active', el.dataset.page === page);
+      });
+      render();
+    }
+
+    function render() {
+      const content = document.getElementById('app-content');
+      if (currentPage === 'dashboard') content.innerHTML = renderDashboard();
+      else if (currentPage === 'projects') content.innerHTML = renderProjects();
+      else if (currentPage === 'expenses') content.innerHTML = renderExpenses();
+      else if (currentPage === 'reports') content.innerHTML = renderReports();
+      else if (currentPage === 'settings') content.innerHTML = renderSettings();
+      attachListeners();
+      if (currentPage === 'reports') setTimeout(drawCharts, 60);
+    }
+
+    function renderDashboard() {
+      const project = getActiveProject();
+      if (!project) {
+        return `<div class="empty"><div class="icon">🏗️</div><p>No projects yet</p>
+          <button class="btn btn-primary mt-4" onclick="openModal('add-project')">Create First Project</button></div>`;
+      }
+      const t = getProjectTotals(project.id);
+      const pct = t.budget > 0 ? Math.min(100, (t.spent / t.budget) * 100) : 0;
+      const all = getAllTotals();
+
+      const insights = [];
+      if (t.spent > 0) insights.push(`Spent ${formatMoney(t.spent)} on this project so far.`);
+      if (t.remaining > 0) insights.push(`Remaining budget: ${formatMoney(t.remaining)}`);
+      if (pct >= 80) insights.push(`⚠️ You have used ${pct.toFixed(0)}% of the project budget.`);
+      if (pct >= 100) insights.push(`🔴 Budget exceeded! Review recent expenses.`);
+
+      return `
+        <div class="project-chip" onclick="navigate('projects')">
+          🏗️ ${project.name} ▾
+        </div>
+
+        <div class="card available-card full">
+          <div class="card-title">REMAINING BALANCE</div>
+          <div class="card-value">${formatMoney(t.remaining)}</div>
+          <div class="text-sm" style="opacity:0.9;margin-top:4px">Budget − Total Spent</div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="card-title">Project Budget</div>
+            <div class="card-value">${formatMoney(t.budget)}</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Total Spent</div>
+            <div class="card-value danger">${formatMoney(t.spent)}</div>
+          </div>
+          <div class="card full">
+            <div class="flex justify-between items-center">
+              <div class="card-title">Budget Used</div>
+              <strong style="color:var(--primary)">${pct.toFixed(0)}%</strong>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:${pct}%;background:${pct>=100?'var(--danger)':pct>=80?'var(--warning)':'var(--accent)'}"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="quick-actions">
+          <button class="btn btn-primary" onclick="openModal('add-expense')">➖ Expense</button>
+          <button class="btn btn-primary" onclick="openModal('add-bill')">📷 Bill</button>
+          <button class="btn btn-outline" onclick="openModal('edit-budget')">💰 Budget</button>
+          <button class="btn btn-outline" onclick="navigate('reports')">📊 Reports</button>
+        </div>
+
+        ${insights.length ? `<div class="mt-4"><h3 class="mb-2" style="font-size:0.95rem">💡 Insights</h3>${insights.map(i => `<div class="insight">${i}</div>`).join('')}</div>` : ''}
+
+        <div class="card mt-4">
+          <div class="flex justify-between items-center mb-2">
+            <h3 style="font-size:1rem">Recent Expenses</h3>
+            <button class="btn btn-outline" style="padding:6px 12px;font-size:0.8rem" onclick="navigate('expenses')">View All</button>
+          </div>
+          ${renderExpenseList(state.expenses.filter(e => e.projectId === project.id).slice().reverse().slice(0, 6))}
+        </div>
+
+        ${state.projects.length > 1 ? `
+        <div class="card mt-4">
+          <h3 class="mb-2" style="font-size:0.95rem">All Projects Snapshot</h3>
+          <div class="text-sm">Total Budget: <strong>${formatMoney(all.totalBudget)}</strong></div>
+          <div class="text-sm">Total Spent: <strong class="danger">${formatMoney(all.totalSpent)}</strong></div>
+          <div class="text-sm">Overall Remaining: <strong class="success">${formatMoney(all.totalRemaining)}</strong></div>
+        </div>` : ''}
+      `;
+    }
+
+    function renderExpenseList(list) {
+      if (!list.length) {
+        return `<div class="empty"><div class="icon">📭</div><p>No expenses yet.</p>
+          <p class="text-sm">Record material, labor or bill payments.</p>
+          <button class="btn btn-primary mt-4" onclick="openModal('add-expense')">Add Expense</button></div>`;
+      }
+      return list.map(e => {
+        const icon = e.hasBill ? '📄' : '🛒';
+        return `
+          <div class="tx-item" onclick="viewExpense('${e.id}')">
+            <div class="tx-icon expense">${icon}</div>
+            <div class="tx-info">
+              <div class="tx-title">${e.description || e.category}</div>
+              <div class="tx-meta">${e.date} · ${e.category} ${e.hasBill ? '📎' : ''}</div>
+            </div>
+            <div class="tx-amount expense">−${formatMoney(e.amount)}</div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderProjects() {
+      return `
+        <div class="flex justify-between items-center mb-2">
+          <h2 style="font-size:1.25rem">Projects</h2>
+          <button class="btn btn-primary" style="padding:8px 14px" onclick="openModal('add-project')">+ New</button>
+        </div>
+        ${state.projects.length === 0 ? `
+          <div class="empty"><div class="icon">🏗️</div><p>No projects created</p>
+          <button class="btn btn-primary mt-4" onclick="openModal('add-project')">Create Project</button></div>` :
+          state.projects.map(p => {
+            const t = getProjectTotals(p.id);
+            const pct = t.budget > 0 ? Math.min(100, (t.spent / t.budget) * 100) : 0;
+            const isActive = p.id === state.activeProjectId;
+            return `
+              <div class="card" style="${isActive ? 'border:2px solid var(--primary)' : ''}">
+                <div class="flex justify-between items-center">
+                  <div>
+                    <strong style="font-size:1.05rem">${p.name}</strong>
+                    ${isActive ? '<span class="badge badge-ok" style="margin-left:8px">Active</span>' : ''}
+                  </div>
+                  <button class="btn btn-outline" style="padding:6px 10px;font-size:0.8rem" onclick="setActiveProject('${p.id}')">${isActive ? '✓ Active' : 'Switch'}</button>
+                </div>
+                <div class="text-sm text-muted mt-2">${p.location || ''} · Started ${p.startDate || '—'}</div>
+                <div class="mt-2 text-sm">Budget: ${formatMoney(t.budget)} · Spent: ${formatMoney(t.spent)}</div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${pct>=100?'var(--danger)':pct>=80?'var(--warning)':'var(--accent)'}"></div></div>
+                <div class="text-sm mt-2">Remaining: <strong style="color:${t.remaining < 0 ? 'var(--danger)' : 'var(--success)'}">${formatMoney(t.remaining)}</strong> (${pct.toFixed(0)}% used)</div>
+                <div class="flex gap-2 mt-3">
+                  <button class="btn btn-outline" style="flex:1;padding:8px;font-size:0.85rem" onclick="openModal('edit-project','${p.id}')">Edit</button>
+                  <button class="btn btn-danger" style="flex:1;padding:8px;font-size:0.85rem" onclick="deleteProject('${p.id}')">Delete</button>
+                </div>
+              </div>`;
+          }).join('')
+        }
+      `;
+    }
+
+    function renderExpenses() {
+      const project = getActiveProject();
+      const list = project
+        ? state.expenses.filter(e => e.projectId === project.id).slice().reverse()
+        : state.expenses.slice().reverse();
+
+      return `
+        <div class="flex justify-between items-center mb-2">
+          <h2 style="font-size:1.25rem">Expenses & Bills</h2>
+          <button class="btn btn-primary" style="padding:8px 14px" onclick="openModal('add-expense')">+ Add</button>
+        </div>
+        ${project ? `<div class="project-chip" onclick="navigate('projects')">🏗️ ${project.name}</div>` : ''}
+        <div class="form-group">
+          <input type="text" id="exp-search" placeholder="Search expenses, vendors, notes..." oninput="filterExpenses()" />
+        </div>
+        <div class="form-row mb-2">
+          <select id="exp-filter-cat" onchange="filterExpenses()">
+            <option value="">All Categories</option>
+            ${CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+          <select id="exp-filter-bill" onchange="filterExpenses()">
+            <option value="">All</option>
+            <option value="with">With Bill</option>
+            <option value="without">No Bill</option>
+          </select>
+        </div>
+        <div class="card" id="exp-list">${renderExpenseList(list)}</div>
+      `;
+    }
+
+    function filterExpenses() {
+      const project = getActiveProject();
+      let list = project
+        ? state.expenses.filter(e => e.projectId === project.id)
+        : [...state.expenses];
+      list = list.reverse();
+
+      const q = (document.getElementById('exp-search')?.value || '').toLowerCase();
+      const cat = document.getElementById('exp-filter-cat')?.value || '';
+      const bill = document.getElementById('exp-filter-bill')?.value || '';
+
+      if (q) list = list.filter(e =>
+        (e.description || '').toLowerCase().includes(q) ||
+        (e.category || '').toLowerCase().includes(q) ||
+        (e.vendor || '').toLowerCase().includes(q)
+      );
+      if (cat) list = list.filter(e => e.category === cat);
+      if (bill === 'with') list = list.filter(e => e.hasBill);
+      if (bill === 'without') list = list.filter(e => !e.hasBill);
+
+      document.getElementById('exp-list').innerHTML = renderExpenseList(list);
+    }
+
+    function renderReports() {
+      const project = getActiveProject();
+      if (!project) {
+        return `<div class="empty"><div class="icon">📊</div><p>Select or create a project first</p></div>`;
+      }
+      const t = getProjectTotals(project.id);
+      const pct = t.budget > 0 ? (t.spent / t.budget * 100) : 0;
+
+      return `
+        <h2 style="font-size:1.25rem;margin-bottom:14px">Reports — ${project.name}</h2>
+        <div class="dashboard-grid">
+          <div class="card"><div class="card-title">Budget</div><div class="card-value">${formatMoney(t.budget)}</div></div>
+          <div class="card"><div class="card-title">Spent</div><div class="card-value danger">${formatMoney(t.spent)}</div></div>
+          <div class="card"><div class="card-title">Remaining</div><div class="card-value success">${formatMoney(t.remaining)}</div></div>
+          <div class="card"><div class="card-title">Used</div><div class="card-value primary">${pct.toFixed(1)}%</div></div>
+        </div>
+        <div class="card">
+          <h3 class="mb-2">Spending by Category</h3>
+          <div class="chart-container"><canvas id="catChart"></canvas></div>
+        </div>
+        <div class="card mt-4">
+          <h3 class="mb-2">Category Breakdown</h3>
+          ${Object.keys(t.byCat).length === 0 ? '<p class="text-sm text-muted">No expenses yet</p>' :
+            Object.entries(t.byCat).sort((a,b) => b[1]-a[1]).map(([cat, amt]) => {
+              const share = t.spent > 0 ? (amt / t.spent * 100) : 0;
+              return `<div class="mb-2">
+                <div class="flex justify-between text-sm"><span>${cat}</span><strong>${formatMoney(amt)}</strong></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${share}%"></div></div>
+              </div>`;
+            }).join('')
+          }
+        </div>
+        <button class="btn btn-outline btn-block mt-4" onclick="exportPDF()">📄 Export PDF Report</button>
+        <button class="btn btn-outline btn-block mt-2" onclick="exportCSV()">📥 Export CSV</button>
+      `;
+    }
+
+    function renderSettings() {
+      return `
+        <h2 style="font-size:1.25rem;margin-bottom:14px">Settings</h2>
+        <div class="card">
+          <div class="form-group">
+            <label>Currency Symbol</label>
+            <input type="text" id="currency-input" value="${state.currency}" maxlength="3" />
+          </div>
+          <button class="btn btn-primary" onclick="updateCurrency()">Save</button>
+        </div>
+        <div class="card mt-4">
+          <h3 class="mb-2">Data</h3>
+          <button class="btn btn-outline btn-block mb-2" onclick="exportCSV()">Export All CSV</button>
+          <button class="btn btn-outline btn-block mb-2" onclick="exportPDF()">Export PDF</button>
+          <button class="btn btn-outline btn-block mb-2" onclick="document.getElementById('import-file').click()">Import Backup</button>
+          <input type="file" id="import-file" accept=".json" class="hidden" onchange="importData(event)" />
+          <button class="btn btn-danger btn-block" onclick="if(confirm('Delete ALL projects and expenses? This cannot be undone.')){state={projects:[],expenses:[],activeProjectId:null,currency:'₹'};saveState();loadState();render();}">Delete All Data</button>
+        </div>
+        <p class="text-sm text-muted mt-4 text-center">ConstructSpend · Data stored locally in browser</p>
+      `;
+    }
+
+    // ==================== MODALS ====================
+    let receiptData = null;
+
+    function openModal(type, editId = null) {
+      const overlay = document.getElementById('modal-overlay');
+      const modal = document.getElementById('modal-content');
+      let html = '';
+      const project = getActiveProject();
+
+      if (type === 'add-project' || type === 'edit-project') {
+        const p = editId ? state.projects.find(x => x.id === editId) : null;
+        html = `
+          <div class="modal-header"><div class="modal-title">${p ? 'Edit Project' : 'New Project'}</div><button class="close-btn" onclick="closeModal()">×</button></div>
+          <div class="form-group"><label>Project Name *</label><input type="text" id="p-name" value="${p ? p.name : ''}" placeholder="e.g. Villa at Whitefield" /></div>
+          <div class="form-group"><label>Budget (₹) *</label><input type="number" id="p-budget" min="1" value="${p ? p.budget : ''}" placeholder="2500000" /></div>
+          <div class="form-group"><label>Location</label><input type="text" id="p-location" value="${p ? (p.location||'') : ''}" placeholder="City / Area" /></div>
+          <div class="form-group"><label>Start Date</label><input type="date" id="p-date" value="${p ? (p.startDate||'') : new Date().toISOString().slice(0,10)}" /></div>
+          <div class="form-group"><label>Notes</label><textarea id="p-notes" rows="2">${p ? (p.notes||'') : ''}</textarea></div>
+          <button class="btn btn-primary btn-block" onclick="saveProject('${editId||''}')">${p ? 'Update' : 'Create'} Project</button>`;
+      }
+      else if (type === 'add-expense' || type === 'add-bill') {
+        html = `
+          <div class="modal-header"><div class="modal-title">${type === 'add-bill' ? 'Upload Bill / Receipt' : 'Add Expense'}</div><button class="close-btn" onclick="closeModal()">×</button></div>
+          ${!project ? '<p class="text-sm" style="color:var(--danger)">Please create a project first.</p>' : `
+          <div class="form-group"><label>Amount (₹) *</label><input type="number" id="e-amount" min="1" placeholder="15000" /></div>
+          <div class="form-group"><label>Category *</label>
+            <select id="e-category">${CATEGORIES.map(c => `<option>${c}</option>`).join('')}</select>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Date</label><input type="date" id="e-date" value="${new Date().toISOString().slice(0,10)}" /></div>
+            <div class="form-group"><label>Payment</label>
+              <select id="e-payment">${PAYMENT_METHODS.map(p => `<option>${p}</option>`).join('')}</select>
+            </div>
+          </div>
+          <div class="form-group"><label>Vendor / Supplier</label><input type="text" id="e-vendor" placeholder="Name of supplier or contractor" /></div>
+          <div class="form-group"><label>Description / Notes</label><input type="text" id="e-desc" placeholder="Cement bags, Mason wages, etc." /></div>
+          <div class="form-group">
+            <label>Bill / Receipt Photo or PDF</label>
+            <button type="button" class="btn btn-outline btn-block" onclick="document.getElementById('e-file').click()">📷 Take Photo / Upload File</button>
+            <input type="file" id="e-file" accept="image/*,application/pdf" class="hidden" onchange="previewReceipt(event)" />
+            <div id="receipt-preview"></div>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="saveExpense()">Save Expense</button>`}`;
+      }
+      else if (type === 'edit-budget') {
+        if (!project) return;
+        html = `
+          <div class="modal-header"><div class="modal-title">Update Project Budget</div><button class="close-btn" onclick="closeModal()">×</button></div>
+          <div class="form-group"><label>Current Budget</label><input type="text" value="${formatMoney(project.budget)}" disabled /></div>
+          <div class="form-group"><label>New Budget (₹)</label><input type="number" id="b-budget" min="1" value="${project.budget}" /></div>
+          <button class="btn btn-primary btn-block" onclick="updateBudget()">Update Budget</button>`;
+      }
+      else if (type === 'view-expense') {
+        const e = state.expenses.find(x => x.id === editId);
+        if (!e) return;
+        const proj = state.projects.find(p => p.id === e.projectId);
+        html = `
+          <div class="modal-header"><div class="modal-title">Expense Details</div><button class="close-btn" onclick="closeModal()">×</button></div>
+          <div class="card" style="box-shadow:none;border:1px solid var(--border)">
+            <div class="card-title">${e.category}</div>
+            <div class="card-value danger">−${formatMoney(e.amount)}</div>
+            <p class="mt-2"><strong>Date:</strong> ${e.date}</p>
+            <p><strong>Project:</strong> ${proj ? proj.name : '—'}</p>
+            ${e.vendor ? `<p><strong>Vendor:</strong> ${e.vendor}</p>` : ''}
+            ${e.payment ? `<p><strong>Payment:</strong> ${e.payment}</p>` : ''}
+            ${e.description ? `<p><strong>Notes:</strong> ${e.description}</p>` : ''}
+            ${e.receipt ? (e.receipt.startsWith('data:image') ? `<img src="${e.receipt}" class="receipt-preview" alt="Bill" />` : `<p class="text-sm mt-2">📎 PDF / File attached</p>`) : ''}
+          </div>
+          <div class="flex gap-2 mt-4">
+            <button class="btn btn-danger" style="flex:1" onclick="deleteExpense('${e.id}')">Delete</button>
+            <button class="btn btn-outline" style="flex:1" onclick="closeModal()">Close</button>
+          </div>`;
+      }
+
+      modal.innerHTML = html;
+      overlay.classList.add('open');
+      receiptData = null;
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.remove('open');
+    }
+
+    function openQuickAdd() {
+      openModal('add-expense');
+    }
+
+    // ==================== ACTIONS ====================
+    function saveProject(editId) {
+      const name = document.getElementById('p-name').value.trim();
+      const budget = parseFloat(document.getElementById('p-budget').value);
+      if (!name || !budget || budget <= 0) return alert('Please enter project name and valid budget');
+
+      if (editId) {
+        const p = state.projects.find(x => x.id === editId);
+        if (p) {
+          p.name = name;
+          p.budget = budget;
+          p.location = document.getElementById('p-location').value.trim();
+          p.startDate = document.getElementById('p-date').value;
+          p.notes = document.getElementById('p-notes').value.trim();
+        }
+      } else {
+        const id = 'p_' + Date.now();
+        state.projects.push({
+          id,
+          name,
+          budget,
+          location: document.getElementById('p-location').value.trim(),
+          startDate: document.getElementById('p-date').value,
+          notes: document.getElementById('p-notes').value.trim(),
+          createdAt: new Date().toISOString()
+        });
+        state.activeProjectId = id;
+      }
+      saveState();
+      closeModal();
+      render();
+    }
+
+    function setActiveProject(id) {
+      state.activeProjectId = id;
+      saveState();
+      render();
+    }
+
+    function deleteProject(id) {
+      if (!confirm('Delete this project and all its expenses?')) return;
+      state.projects = state.projects.filter(p => p.id !== id);
+      state.expenses = state.expenses.filter(e => e.projectId !== id);
+      if (state.activeProjectId === id) {
+        state.activeProjectId = state.projects[0]?.id || null;
+      }
+      saveState();
+      render();
+    }
+
+    function updateBudget() {
+      const project = getActiveProject();
+      if (!project) return;
+      const budget = parseFloat(document.getElementById('b-budget').value);
+      if (!budget || budget <= 0) return alert('Enter valid budget');
+      project.budget = budget;
+      saveState();
+      closeModal();
+      render();
+    }
+
+    function previewReceipt(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        receiptData = ev.target.result;
+        const isImg = file.type.startsWith('image/');
+        document.getElementById('receipt-preview').innerHTML = isImg
+          ? `<img src="${receiptData}" class="receipt-preview" />`
+          : `<p class="text-sm mt-2">📎 ${file.name} attached</p>`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function saveExpense() {
+      const project = getActiveProject();
+      if (!project) return alert('Create a project first');
+      const amount = parseFloat(document.getElementById('e-amount').value);
+      if (!amount || amount <= 0) return alert('Enter a valid amount');
+
+      const t = getProjectTotals(project.id);
+      if (amount > t.remaining) {
+        if (!confirm(`This expense (${formatMoney(amount)}) is larger than remaining budget (${formatMoney(t.remaining)}). Continue?`)) return;
+      }
+
+      state.expenses.push({
+        id: 'e_' + Date.now(),
+        projectId: project.id,
+        amount,
+        category: document.getElementById('e-category').value,
+        date: document.getElementById('e-date').value,
+        payment: document.getElementById('e-payment').value,
+        vendor: document.getElementById('e-vendor').value.trim(),
+        description: document.getElementById('e-desc').value.trim(),
+        receipt: receiptData,
+        hasBill: !!receiptData,
+        createdAt: new Date().toISOString()
+      });
+      receiptData = null;
+      saveState();
+      closeModal();
+      render();
+    }
+
+    function viewExpense(id) {
+      openModal('view-expense', id);
+    }
+
+    function deleteExpense(id) {
+      if (!confirm('Delete this expense?')) return;
+      state.expenses = state.expenses.filter(e => e.id !== id);
+      saveState();
+      closeModal();
+      render();
+    }
+
+    function updateCurrency() {
+      state.currency = document.getElementById('currency-input').value || '₹';
+      saveState();
+      render();
+    }
+
+    // ==================== CHARTS ====================
+    let catChart;
+    function drawCharts() {
+      const project = getActiveProject();
+      if (!project) return;
+      const t = getProjectTotals(project.id);
+      const cats = Object.keys(t.byCat);
+      const values = Object.values(t.byCat);
+
+      const ctx = document.getElementById('catChart');
+      if (!ctx) return;
+      if (catChart) catChart.destroy();
+      catChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: cats.length ? cats : ['No data'],
+          datasets: [{
+            data: values.length ? values : [1],
+            backgroundColor: [
+              '#b45309','#f59e0b','#fbbf24','#fcd34d','#fde68a',
+              '#92400e','#d97706','#ea580c','#c2410c','#9a3412',
+              '#78350f','#451a03','#a16207','#ca8a04'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+        }
+      });
+    }
+
+    // ==================== EXPORT ====================
+    function exportCSV() {
+      let csv = 'Date,Project,Category,Vendor,Amount,Payment,Description,HasBill\n';
+      state.expenses.forEach(e => {
+        const proj = state.projects.find(p => p.id === e.projectId);
+        csv += `${e.date},"${proj ? proj.name : ''}",${e.category},"${e.vendor||''}",${e.amount},${e.payment||''},"${(e.description||'').replace(/"/g,'""')}",${e.hasBill ? 'Yes' : 'No'}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `constructspend-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    }
+
+    function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const project = getActiveProject();
+      const t = project ? getProjectTotals(project.id) : getAllTotals();
+
+      doc.setFontSize(16);
+      doc.text('ConstructSpend — Project Report', 20, 20);
+      doc.setFontSize(11);
+      doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, 20, 28);
+
+      if (project) {
+        doc.text(`Project: ${project.name}`, 20, 40);
+        doc.text(`Budget: ${formatMoney(t.budget)}`, 20, 48);
+        doc.text(`Spent: ${formatMoney(t.spent)}`, 20, 56);
+        doc.text(`Remaining: ${formatMoney(t.remaining)}`, 20, 64);
+      }
+
+      doc.text('Recent Expenses:', 20, 80);
+      let y = 88;
+      const list = project
+        ? state.expenses.filter(e => e.projectId === project.id).slice().reverse().slice(0, 25)
+        : state.expenses.slice().reverse().slice(0, 25);
+
+      list.forEach(e => {
+        doc.setFontSize(9);
+        doc.text(`${e.date} | ${e.category} | ${formatMoney(e.amount)} | ${e.description || e.vendor || ''}`, 20, y);
+        y += 7;
+        if (y > 275) { doc.addPage(); y = 20; }
+      });
+      doc.save('constructspend-report.pdf');
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (data.projects || data.expenses) {
+            state = { ...state, ...data };
+            saveState();
+            render();
+            alert('Data imported successfully');
+          }
+        } catch (err) { alert('Invalid backup file'); }
+      };
+      reader.readAsText(file);
+    }
+
+    // ==================== INIT ====================
+    function attachListeners() {
+      document.querySelectorAll('.nav-item, .nav-btn:not(.add-btn)').forEach(el => {
+        el.onclick = () => navigate(el.dataset.page);
+      });
+    }
+
+    document.getElementById('modal-overlay').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeModal();
+    });
+
+    loadState();
+    render();
+  </script>
+</body>
+</html>
